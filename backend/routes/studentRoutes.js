@@ -10,7 +10,8 @@ router.use(authorize('Student'));
 
 router.post('/apply', upload.fields([
   { name: 'offerLetter', maxCount: 1 },
-  { name: 'statementOfObjective', maxCount: 1 }
+  { name: 'statementOfObjective', maxCount: 1 },
+  { name: 'mandatoryDocument', maxCount: 1 }
 ]), submitApplication);
 router.get('/applications', getMyApplications);
 router.get('/applications/:id/logs', getApplicationLogs);

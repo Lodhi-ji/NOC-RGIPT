@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 
 // Route imports
 const authRoutes = require('./routes/authRoutes');
@@ -29,10 +30,14 @@ app.use('/api/officer', officerRoutes);
 // Database connection
 const connectDB = async () => {
   try {
-    // Generate a test URI if none is provided in .env
-    const mongoURI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/noc_portal';
-    await mongoose.connect(mongoURI);
-    console.log(`MongoDB Connected`);
+    let mongoUri = process.env.MONGO_URI || '';
+    if (process.env.USE_IN_MEMORY_DB === 'true' || !mongoUri) {
+      const mem = await MongoMemoryServer.create();
+      mongoUri = mem.getUri();
+      console.log('Using in-memory MongoDB instance');
+    }
+    await mongoose.connect(mongoUri);
+    console.log('MongoDB Connected');
   } catch (error) {
     console.error(`Error: ${error.message}`);
     process.exit(1);

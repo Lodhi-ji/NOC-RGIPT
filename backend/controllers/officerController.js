@@ -4,27 +4,44 @@ const sendEmail = require('../utils/sendEmail');
 const User = require('../models/User');
 
 const getOfficerApplications = async (req, res) => {
-  // If user is TNP Head, fetch all applications
-  if (req.user.role === 'TNPHead') {
-    const applications = await Application.find({ status: { $in: ['UNDER_REVIEW_HEAD', 'APPROVED_FINAL', 'REJECTED_HEAD', 'READY_FOR_COLLECTION', 'COLLECTED'] } })
+  try {
+    // If user is TNP Head, fetch applications scoped to their actions or pending ones
+    if (req.user.role === 'TNPHead') {
+      const applications = await Application.find({
+        $or: [
+          { status: 'UNDER_REVIEW_HEAD' }, // Pending for Head
+          { approvedBy: req.user._id },    // Approved by this specific Head
+          { rejectedBy: req.user._id }     // Rejected by this specific Head
+        ]
+      })
+        .populate('studentId', 'name email rollNumber')
+        .populate('departmentId', 'name')
+        .sort({ updatedAt: -1 });
+      return res.json(applications);
+    }
+
+    // If user is Dept Officer, fetch applications for their department, scoped to their actions or pending
+    const applications = await Application.find({
+      departmentId: req.user.departmentId,
+      $or: [
+        { status: { $in: ['SUBMITTED', 'UNDER_REVIEW_DEPT'] } }, // Pending for Dept
+        { recommendedBy: req.user._id },                         // Recommended by this specific Officer
+        { rejectedBy: req.user._id }                            // Rejected by this specific Officer
+      ]
+    })
       .populate('studentId', 'name email rollNumber')
       .populate('departmentId', 'name')
       .sort({ updatedAt: -1 });
-    return res.json(applications);
+    res.json(applications);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
-
-  // If user is Dept Officer, fetch applications for their department
-  const applications = await Application.find({ departmentId: req.user.departmentId })
-    .populate('studentId', 'name email rollNumber')
-    .populate('departmentId', 'name')
-    .sort({ updatedAt: -1 });
-  res.json(applications);
 };
 
 const updateApplicationStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { action, remarks } = req.body; // action: 'APPROVE', 'REJECT', 'COLLECTED'
+    const { action, remarks } = req.body; 
     
     const application = await Application.findById(id).populate('studentId', 'email');
     if (!application) return res.status(404).json({ message: 'Not found' });
@@ -34,9 +51,18 @@ const updateApplicationStatus = async (req, res) => {
 
     if (action === 'REJECT') {
       newStatus = isHead ? 'REJECTED_HEAD' : 'REJECTED_DEPT';
+      application.rejectedAt = new Date();
+      application.rejectedBy = req.user._id;
     } else if (action === 'APPROVE') {
       newStatus = isHead ? 'APPROVED_FINAL' : 'UNDER_REVIEW_HEAD';
-      if(isHead) application.currentStage = 'DONE';
+      if (isHead) {
+        application.currentStage = 'DONE';
+        application.approvedAt = new Date();
+        application.approvedBy = req.user._id;
+      } else {
+        application.recommendedAt = new Date();
+        application.recommendedBy = req.user._id;
+      }
     } else if (action === 'COLLECTED') {
       newStatus = 'COLLECTED';
     }
@@ -46,8 +72,8 @@ const updateApplicationStatus = async (req, res) => {
     
     if (!application.rollNumber) application.rollNumber = 'N/A';
     
-    if(newStatus === 'APPROVED_FINAL') {
-      application.status = 'READY_FOR_COLLECTION'; // Direct transition
+    if (newStatus === 'APPROVED_FINAL') {
+      application.status = 'READY_FOR_COLLECTION';
     }
 
     await application.save();

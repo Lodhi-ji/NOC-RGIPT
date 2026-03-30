@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 sendEmail({
-  email: process.env.EMAIL_USER, // Send to themselves
+  email: process.env.SMTP_USER, // Send to themselves
   subject: 'NOC Portal Test Email',
   message: 'Testing nodemailer configuration.'
 }).then(() => {

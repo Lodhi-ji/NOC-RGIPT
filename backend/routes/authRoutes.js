@@ -18,7 +18,7 @@ const generateToken = (id) => {
 router.post('/send-otp', async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email.endsWith('@rgipt.ac.in')) {
       return res.status(400).json({ message: 'Only @rgipt.ac.in email addresses are allowed' });
     }
@@ -102,11 +102,11 @@ router.post('/forgot-password', async (req, res) => {
     const { email } = req.body;
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User with this email not found' });
-    
+
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndDelete({ email });
     await OTP.create({ email, otp: otpCode });
-    
+
     await sendEmail({
       email,
       subject: 'NOC Portal - Password Reset Code',
@@ -124,14 +124,14 @@ router.post('/reset-password', async (req, res) => {
     const { email, otp, newPassword } = req.body;
     const validOtp = await OTP.findOne({ email, otp });
     if (!validOtp) return res.status(400).json({ message: 'Invalid or expired OTP' });
-    
+
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User not found' });
-    
+
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
     await user.save();
-    
+
     await OTP.findOneAndDelete({ email });
     res.json({ message: 'Password updated successfully' });
   } catch (error) {

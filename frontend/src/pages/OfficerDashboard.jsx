@@ -1,71 +1,197 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import api from '../api';
+import { AuthContext } from '../context/AuthContext';
 
-const ExpandedDetails = ({ app }) => (
-  <div className="mt-6 p-6 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-sm text-slate-700">
-    <div className="md:col-span-2 text-indigo-800 font-extrabold pb-2 border-b border-slate-200">Requisition Details</div>
-    <div><strong className="text-slate-900">Course/Branch:</strong> {app.degreeCourse} in {app.branch} ({app.yearSession})</div>
-    <div><strong className="text-slate-900">CPI & Contact:</strong> {app.latestCPI} | Ph: {app.contactNo}</div>
-    <div className="md:col-span-2"><strong className="text-slate-900">Internship Type:</strong> {app.internshipType}</div>
-    <div className="md:col-span-2"><strong className="text-slate-900">Org Address:</strong> {app.organizationAddress}</div>
-    
-    <div className="pt-4 mt-2 border-t border-slate-200">
-      <h4 className="font-extrabold text-slate-900 uppercase tracking-widest text-xs mb-2">Mentor Details</h4>
-      <p className="font-medium">{app.mentorName} ({app.mentorDesignation})</p>
-      <p className="text-slate-500">{app.mentorEmail} | {app.mentorContact}</p>
-    </div>
-    <div className="pt-4 mt-2 border-t border-slate-200">
-      <h4 className="font-extrabold text-slate-900 uppercase tracking-widest text-xs mb-2">Addressee Details</h4>
-      <p className="font-medium">{app.addresseeName} ({app.addresseeDesignation})</p>
-      <p className="text-slate-500">{app.addresseeEmail} | {app.addresseeContact}</p>
-    </div>
-  </div>
-);
+const calculateDuration = (startDate, endDate) => {
+  if (!startDate || !endDate) return null;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = Math.abs(end - start);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return `${diffDays} Days`;
+};
 
-const AppCard = ({ app, isPending, remarks, setRemarks, handleAction }) => {
-  const [showDetails, setShowDetails] = useState(false);
-  
+const calculateStudentYear = (rollNumber) => {
+  if (!rollNumber) return "N/A";
+  const prefix = parseInt(rollNumber.substring(0, 2));
+  if (isNaN(prefix)) return "N/A";
+  const currentYearSuffix = new Date().getFullYear() % 100;
+  let yearNum = (currentYearSuffix - prefix) + 1; // Simplified logic for standard 4-year degree
+  if (yearNum <= 0) yearNum = 1;
+  if (yearNum > 4) yearNum = 4;
+
+  const suffixes = ["th", "st", "nd", "rd", "th"];
+  return `${yearNum}${suffixes[yearNum] || "th"} Year`;
+};
+
+const formatDate = (dateString) => {
+  if (!dateString) return null;
+  return new Date(dateString).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const formatFileUrl = (dbPath) => {
+  if (!dbPath) return '#';
+  const cleanPath = dbPath.includes('uploads/')
+    ? dbPath.substring(dbPath.indexOf('uploads/'))
+    : dbPath;
+  return `http://localhost:5001/${cleanPath}`;
+};
+
+const ExpandedDetails = ({ app, isPending, remarks, setRemarks, handleAction }) => {
+  const duration = calculateDuration(app.durationFrom, app.durationTo);
+  const academicYear = calculateStudentYear(app.rollNumber);
+
   return (
-    <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 mb-6 flex flex-col md:flex-row gap-6 justify-between hover:shadow-lg transition-shadow overflow-hidden relative group">
-      <div className={`absolute top-0 left-0 w-2 h-full ${isPending ? 'bg-gradient-to-b from-amber-400 to-orange-500' : 'bg-gradient-to-b from-emerald-400 to-green-600'}`}></div>
-      <div className="flex-1 pl-4">
-        <div className="flex justify-between items-start">
-            <h3 className="text-2xl font-extrabold text-slate-900 leading-tight">{app.companyName}</h3>
-            {!isPending && (
-              <span className="font-bold text-xs uppercase tracking-widest px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full border border-slate-200">{app.status.replace(/_/g, ' ')}</span>
-            )}
+    <div className="mt-6 p-8 bg-slate-50 border border-slate-200 rounded-2xl space-y-8 animate-fade-in text-left">
+      {/* Student & Academic Info */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="space-y-4">
+          <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Student Information</h4>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold text-slate-900">{app.studentId?.name}</p>
+              <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">{academicYear}</span>
+            </div>
+            <p className="text-xs text-slate-500">{app.studentId?.email}</p>
+            <p className="text-xs font-medium text-indigo-600 bg-indigo-50 inline-block px-2 py-0.5 rounded">Roll: {app.rollNumber}</p>
+          </div>
         </div>
-        <p className="text-sm font-medium text-slate-600 mt-2">
-           <span className="text-slate-400">Student:</span> <span className="text-slate-900 font-bold">{app.studentId?.name}</span> ({app.studentId?.email}) <span className="mx-2 text-slate-300">|</span> <span className="text-slate-400">Roll:</span> <span className="text-slate-900 font-bold">{app.rollNumber || 'N/A'}</span>
-        </p>
-        <p className="text-sm font-medium text-indigo-600 mt-1">
-           <span className="text-slate-400">Duration:</span> {app.durationFrom} to {app.durationTo}
-        </p>
-        
-        <button onClick={() => setShowDetails(!showDetails)} className="inline-flex items-center text-indigo-600 text-xs font-bold mt-4 uppercase tracking-widest hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-lg active:bg-indigo-100">
-          {showDetails ? 'Minus Details ▲' : 'Expand Full Details ▼'}
-        </button>
-        {showDetails && <ExpandedDetails app={app} />}
-
-        <div className="mt-6 pt-4 border-t border-slate-100 flex gap-6 text-sm">
-          {app.offerLetter && <a href={`http://localhost:5000/${app.offerLetter}`} target="_blank" rel="noreferrer" className="inline-flex items-center font-bold text-indigo-600 hover:text-indigo-800 transition-colors"><svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Offer Letter</a>}
-          {app.statementOfObjective && <a href={`http://localhost:5000/${app.statementOfObjective}`} target="_blank" rel="noreferrer" className="inline-flex items-center font-bold text-indigo-600 hover:text-indigo-800 transition-colors"><svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Statement</a>}
+        <div className="space-y-4 md:col-span-2">
+          <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Academic Details</h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-slate-500">Course & Branch</p>
+              <p className="text-sm font-semibold text-slate-800">{app.degreeCourse} / {app.branch}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">CPI</p>
+              <p className="text-sm font-semibold text-slate-800">{app.latestCPI}</p>
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* Internship Details */}
+      <div className="space-y-4">
+        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Internship Overview</h4>
+        <div className="bg-white p-5 rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <p className="text-xs text-slate-500">Organization</p>
+            <p className="text-sm font-bold text-slate-900">{app.companyName}</p>
+            <p className="text-xs text-slate-500 mt-1">{app.organizationAddress}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">Type & Duration</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold text-indigo-700">{app.internshipType}</p>
+              {duration && <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded uppercase tracking-widest border border-slate-200">{duration}</span>}
+            </div>
+            <p className="text-xs text-slate-600 mt-1">{app.durationFrom} to {app.durationTo}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Student Remarks - Highly Visible */}
+      {app.studentMessage && (
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-5 rounded-r-xl">
+          <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-2">Message from Student</h4>
+          <p className="text-sm text-blue-900 font-medium italic leading-relaxed">"{app.studentMessage}"</p>
+        </div>
+      )}
+
+      {/* Attachments */}
+      <div className="space-y-4">
+        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Review Documents</h4>
+        <div className="flex flex-wrap gap-3">
+          {app.mandatoryDocument && (
+            <a href={formatFileUrl(app.mandatoryDocument)} target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-2.5 bg-white border border-rose-200 text-rose-700 rounded-xl text-xs font-bold hover:bg-rose-50 transition-all shadow-sm">
+              <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              SOP / Marksheet
+            </a>
+          )}
+          {app.offerLetter && (
+            <a href={formatFileUrl(app.offerLetter)} target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm">
+              <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              Offer Letter
+            </a>
+          )}
+          {app.statementOfObjective && (
+            <a href={formatFileUrl(app.statementOfObjective)} target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm">
+              <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              Statement of Objective
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Mentor & Addressee */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
+        <div className="space-y-2">
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Internal Mentor</h4>
+          <p className="text-sm font-bold text-slate-800">{app.mentorName}</p>
+          <p className="text-xs text-slate-500">{app.mentorDesignation} | {app.mentorEmail}</p>
+        </div>
+        <div className="space-y-2">
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Addressee (External)</h4>
+          <p className="text-sm font-bold text-slate-800">{app.addresseeName}</p>
+          <p className="text-xs text-slate-500">{app.addresseeDesignation} | {app.addresseeEmail}</p>
+        </div>
+      </div>
+
+      {/* Timeline Audit */}
+      <div className="pt-6 border-t border-slate-200">
+        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Application Timeline</h4>
+        <div className="flex flex-wrap gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-slate-300"></div>
+            <p className="text-xs font-medium text-slate-500">Applied on: <span className="text-slate-900 font-bold">{formatDate(app.appliedAt || app.createdAt)}</span></p>
+          </div>
+          {app.recommendedAt && (
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-amber-400"></div>
+              <p className="text-xs font-medium text-slate-500">Recommended on: <span className="text-slate-900 font-bold">{formatDate(app.recommendedAt)}</span></p>
+            </div>
+          )}
+          {app.approvedAt && (
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+              <p className="text-xs font-medium text-slate-500">Approved on: <span className="text-slate-900 font-bold">{formatDate(app.approvedAt)}</span></p>
+            </div>
+          )}
+          {app.rejectedAt && (
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+              <p className="text-xs font-medium text-slate-500">Rejected on: <span className="text-slate-900 font-bold">{formatDate(app.rejectedAt)}</span></p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Decision Section */}
       {isPending && (
-        <div className="w-full md:w-80 flex flex-col justify-center bg-slate-50 p-6 rounded-2xl border border-slate-100 relative">
-           <textarea 
-             placeholder="Include administrative remarks (optional)..."
-             className="w-full p-4 border border-slate-200 rounded-xl text-sm mb-4 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none resize-none"
-             rows="3"
-             value={remarks[app._id] || ''}
-             onChange={e => setRemarks({...remarks, [app._id]: e.target.value})}
-           ></textarea>
-           <div className="flex gap-3">
-             <button onClick={() => handleAction(app._id, 'APPROVE')} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-extrabold text-sm hover:bg-emerald-700 hover:-translate-y-0.5 shadow-md shadow-emerald-200 transition-all">APPROVE</button>
-             <button onClick={() => handleAction(app._id, 'REJECT')} className="flex-1 bg-rose-600 text-white py-3 rounded-xl font-extrabold text-sm hover:bg-rose-700 hover:-translate-y-0.5 shadow-md shadow-rose-200 transition-all">REJECT</button>
-           </div>
+        <div className="pt-8 border-t border-slate-200 space-y-4">
+          <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Final Decision</h4>
+          <textarea
+            placeholder="Include administrative remarks (optional)..."
+            className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none resize-none shadow-sm"
+            rows="3"
+            value={remarks[app._id] || ''}
+            onChange={e => setRemarks({ ...remarks, [app._id]: e.target.value })}
+          ></textarea>
+          <div className="flex gap-4">
+            <button
+              onClick={() => handleAction(app._id, 'APPROVE')}
+              className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-black text-sm hover:bg-emerald-700 hover:-translate-y-1 shadow-lg shadow-emerald-100 transition-all uppercase tracking-widest"
+            >
+              Approve Requisition
+            </button>
+            <button
+              onClick={() => handleAction(app._id, 'REJECT')}
+              className="flex-1 bg-rose-600 text-white py-4 rounded-xl font-black text-sm hover:bg-rose-700 hover:-translate-y-1 shadow-lg shadow-rose-100 transition-all uppercase tracking-widest"
+            >
+              Reject Application
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -73,8 +199,28 @@ const AppCard = ({ app, isPending, remarks, setRemarks, handleAction }) => {
 };
 
 const OfficerDashboard = () => {
+  const { user } = useContext(AuthContext);
   const [applications, setApplications] = useState([]);
   const [remarks, setRemarks] = useState({});
+  const [activeTab, setActiveTab] = useState('current');
+  const [expandedId, setExpandedId] = useState(null);
+
+  // Filter States
+  const [filterStatus, setFilterStatus] = useState('All');
+  const [filterYear, setFilterYear] = useState('All Years');
+  const [filterDate, setFilterDate] = useState('');
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const formatDate = () => {
+    const options = { weekday: 'long', month: 'long', day: 'numeric' };
+    return new Date().toLocaleDateString('en-US', options);
+  };
 
   useEffect(() => { fetchApplications(); }, []);
 
@@ -90,6 +236,10 @@ const OfficerDashboard = () => {
   const handleAction = async (id, action) => {
     try {
       await api.put(`/officer/applications/${id}/status`, { action, remarks: remarks[id] || '' });
+      const newRemarks = { ...remarks };
+      delete newRemarks[id];
+      setRemarks(newRemarks);
+      setExpandedId(null);
       fetchApplications();
     } catch (error) {
       alert(error.response?.data?.message || 'Error updating status');
@@ -97,37 +247,262 @@ const OfficerDashboard = () => {
   };
 
   const pendingApps = applications.filter(a => a.status === 'UNDER_REVIEW_DEPT' || a.status === 'SUBMITTED');
-  const pastApps = applications.filter(a => a.status !== 'UNDER_REVIEW_DEPT' && a.status !== 'SUBMITTED');
+  const pastApps = useMemo(() => {
+    return applications.filter(a => {
+      const isHistorical = a.status !== 'UNDER_REVIEW_DEPT' && a.status !== 'SUBMITTED';
+      const isMine = (a.recommendedBy?._id || a.recommendedBy) === user?._id || (a.rejectedBy?._id || a.rejectedBy) === user?._id;
+      return isHistorical && isMine;
+    });
+  }, [applications, user]);
+
+  // Advanced Filtering Logic
+  const filteredHistoryApplications = useMemo(() => {
+    const approvedStatuses = ['UNDER_REVIEW_HEAD', 'READY_FOR_COLLECTION', 'COLLECTED', 'APPROVED', 'APPROVED_DEPT', 'APPROVED_FINAL'];
+
+    return pastApps.filter(app => {
+      // Status Filter
+      if (filterStatus !== 'All') {
+        if (filterStatus === 'Approved/Forwarded') {
+          if (!approvedStatuses.includes(app.status)) return false;
+        }
+        if (filterStatus === 'Rejected') {
+          if (!app.status.includes('REJECTED')) return false;
+        }
+      }
+
+      // Year Filter
+      if (filterYear !== 'All Years') {
+        const studentYear = calculateStudentYear(app.rollNumber);
+        if (studentYear !== filterYear) return false;
+      }
+
+      // Date Filter
+      if (filterDate) {
+        const appDate = new Date(app.updatedAt).toISOString().split('T')[0];
+        if (appDate !== filterDate) return false;
+      }
+
+      return true;
+    });
+  }, [pastApps, filterStatus, filterYear, filterDate]);
+
+  const historyStats = useMemo(() => {
+    const approvedStatuses = ['UNDER_REVIEW_HEAD', 'READY_FOR_COLLECTION', 'COLLECTED', 'APPROVED', 'APPROVED_DEPT', 'APPROVED_FINAL'];
+    return {
+      total: filteredHistoryApplications.length,
+      approved: filteredHistoryApplications.filter(a => approvedStatuses.includes(a.status)).length,
+      rejected: filteredHistoryApplications.filter(a => a.status.includes('REJECTED')).length
+    };
+  }, [filteredHistoryApplications]);
 
   return (
-    <div className="space-y-12 pb-12 animate-fade-in-up">
-      <div>
-        <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Department Officer Dashboard</h1>
-        <p className="text-slate-500 mt-2 font-medium">Review and process student No Objection Certificate (NOC) requisitions assigned to your department.</p>
-      </div>
-      
-      <div>
-        <h2 className="text-2xl font-extrabold text-indigo-900 uppercase tracking-widest mb-6 border-b-2 border-slate-200 pb-3 flex items-center">
-            <span className="w-3 h-3 rounded-full bg-amber-500 mr-3 animate-pulse"></span>
-            Pending Department Review
-        </h2>
-        {pendingApps.length === 0 ? (
-          <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center">
-            <h3 className="text-lg font-bold text-slate-600">You're all caught up!</h3>
-            <p className="text-slate-400 mt-2">No pending applications at the moment.</p>
+    <div className="min-h-screen bg-slate-50/50 -mx-4 sm:-mx-8 px-4 sm:px-8 pb-12 animate-fade-in">
+      <div className="max-w-6xl mx-auto space-y-8 pt-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+              {getGreeting()}, Officer {user?.name?.split(' ')[0]}
+            </h1>
+            <p className="text-slate-500 mt-1 font-medium">{formatDate()}</p>
           </div>
-        ) : pendingApps.map(app => 
-            <AppCard key={app._id} app={app} isPending={true} remarks={remarks} setRemarks={setRemarks} handleAction={handleAction} />
-        )}
-      </div>
+        </div>
 
-      <div className="pt-8 opacity-75">
-        <h2 className="text-2xl font-extrabold text-slate-800 uppercase tracking-widest mb-6 border-b-2 border-slate-200 pb-3 flex items-center">
-            <span className="w-3 h-3 rounded-full bg-emerald-500 mr-3"></span>
-            Processed Applications Ledger
-        </h2>
-        {pastApps.length === 0 ? <p className="text-slate-500 italic">No historical records.</p> : pastApps.map(app => 
-            <AppCard key={app._id} app={app} isPending={false} remarks={remarks} setRemarks={setRemarks} handleAction={handleAction} />
+        {/* iOS-Style Segmented Control */}
+        <div className="flex justify-start">
+          <div className="bg-slate-200/50 p-1.5 rounded-2xl inline-flex shadow-inner">
+            <button
+              onClick={() => { setActiveTab('current'); setExpandedId(null); }}
+              className={`px-8 py-2.5 text-sm transition-all duration-200 rounded-xl ${activeTab === 'current' ? 'bg-white shadow-md text-indigo-700 font-bold' : 'text-slate-500 hover:text-slate-700 font-medium'}`}
+            >
+              Current Requests
+              {pendingApps.length > 0 && <span className="ml-2 bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-[10px] font-black">{pendingApps.length}</span>}
+            </button>
+            <button
+              onClick={() => { setActiveTab('history'); setExpandedId(null); }}
+              className={`px-8 py-2.5 text-sm transition-all duration-200 rounded-xl ${activeTab === 'history' ? 'bg-white shadow-md text-indigo-700 font-bold' : 'text-slate-500 hover:text-slate-700 font-medium'}`}
+            >
+              Previous Requests
+            </button>
+          </div>
+        </div>
+
+        {activeTab === 'current' ? (
+          <div className="space-y-4">
+            {pendingApps.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-[2rem] p-16 text-center shadow-sm">
+                <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
+                  <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Review Inbox Empty</h3>
+                <p className="text-slate-500 max-w-sm mx-auto">All pending NOC applications for your department have been processed. Great work!</p>
+              </div>
+            ) : (
+              pendingApps.map(app => (
+                <div key={app._id} className={`bg-white rounded-3xl border transition-all duration-300 overflow-hidden ${expandedId === app._id ? 'border-indigo-200 shadow-xl ring-4 ring-indigo-50' : 'border-slate-200 shadow-sm hover:shadow-md'}`}>
+                  <div
+                    onClick={() => setExpandedId(expandedId === app._id ? null : app._id)}
+                    className="p-6 sm:p-8 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6"
+                  >
+                    <div className="flex-1 space-y-1 text-left">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-xl font-bold text-slate-900 tracking-tight">{app.studentId?.name}</h3>
+                        <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider">Pending Review</span>
+                      </div>
+                      <p className="text-sm font-medium text-slate-500">
+                        Roll: <span className="text-slate-700 font-bold">{app.rollNumber}</span>
+                        <span className="mx-2 text-slate-300">•</span>
+                        Applied for <span className="text-slate-700 font-bold">{app.companyName}</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Applied Date</p>
+                        <p className="text-sm font-bold text-slate-700">{new Date(app.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedId === app._id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                        <svg className={`w-5 h-5 transition-transform duration-300 ${expandedId === app._id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {expandedId === app._id && (
+                    <div className="px-6 sm:px-8 pb-8">
+                      <ExpandedDetails
+                        app={app}
+                        isPending={true}
+                        remarks={remarks}
+                        setRemarks={setRemarks}
+                        handleAction={handleAction}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* History Stats & Filter Bar */}
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-4 items-center justify-between">
+                <div className="flex gap-3">
+                  <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Found</p>
+                    <p className="text-lg font-black text-slate-900">{historyStats.total}</p>
+                  </div>
+                  <div className="bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 shadow-sm">
+                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Approved</p>
+                    <p className="text-lg font-black text-emerald-700">{historyStats.approved}</p>
+                  </div>
+                  <div className="bg-rose-50 px-4 py-2 rounded-xl border border-rose-100 shadow-sm">
+                    <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Rejected</p>
+                    <p className="text-lg font-black text-rose-700">{historyStats.rejected}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Approved/Forwarded">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+
+                  <select
+                    value={filterYear}
+                    onChange={(e) => setFilterYear(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
+                  >
+                    <option value="All Years">All Years</option>
+                    <option value="1st Year">1st Year</option>
+                    <option value="2nd Year">2nd Year</option>
+                    <option value="3rd Year">3rd Year</option>
+                    <option value="4th Year">4th Year</option>
+                  </select>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={filterDate}
+                      onChange={(e) => setFilterDate(e.target.value)}
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
+                    />
+                    {filterDate && (
+                      <button onClick={() => setFilterDate('')} className="text-xs font-black text-rose-500 hover:text-rose-600 uppercase tracking-widest">Clear</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50 border-b border-slate-200">
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Student</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Company</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Processed</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredHistoryApplications.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="px-8 py-12 text-center text-slate-500 italic font-medium">No records matching your filters were found.</td>
+                      </tr>
+                    ) : (
+                      filteredHistoryApplications.map(app => (
+                        <React.Fragment key={app._id}>
+                          <tr
+                            onClick={() => setExpandedId(expandedId === app._id ? null : app._id)}
+                            className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                          >
+                            <td className="px-8 py-5">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-slate-900">{app.studentId?.name}</p>
+                                <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter">{calculateStudentYear(app.rollNumber)}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 font-medium">{app.rollNumber}</p>
+                            </td>
+                            <td className="px-8 py-5">
+                              <p className="text-sm font-bold text-slate-800">{app.companyName}</p>
+                              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-tighter">{app.internshipType}</p>
+                            </td>
+                            <td className="px-8 py-5 text-center">
+                              <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${app.status.includes('REJECTED') ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                                app.status.includes('APPROVED') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                  'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}>
+                                {app.status.replace(/_/g, ' ')}
+                              </span>
+                            </td>
+                            <td className="px-8 py-5 text-right">
+                              <p className="text-sm font-bold text-slate-700">{formatDate(app.recommendedAt || app.rejectedAt || app.updatedAt)}</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                {app.status.includes('REJECTED') ? 'Rejected On' : 'Recommended On'}
+                              </p>
+                            </td>
+                          </tr>
+                          {expandedId === app._id && (
+                            <tr>
+                              <td colSpan="4" className="px-8 pb-8 pt-2 bg-slate-50/30">
+                                <ExpandedDetails app={app} isPending={false} />
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

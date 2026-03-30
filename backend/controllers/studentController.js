@@ -9,11 +9,13 @@ const submitApplication = async (req, res) => {
       departmentId, rollNumber, degreeCourse, branch, yearSession, latestCPI, contactNo, 
       internshipType, durationFrom, durationTo, companyName, organizationAddress,
       mentorName, mentorDesignation, mentorContact, mentorEmail,
-      addresseeName, addresseeDesignation, addresseeContact, addresseeEmail 
+      addresseeName, addresseeDesignation, addresseeContact, addresseeEmail,
+      studentMessage
     } = req.body;
     
-    const offerLetter = req.files && req.files['offerLetter'] ? req.files['offerLetter'][0].path : null;
-    const statementOfObjective = req.files && req.files['statementOfObjective'] ? req.files['statementOfObjective'][0].path : null;
+    const offerLetter = req.files && req.files['offerLetter'] ? `uploads/${req.files['offerLetter'][0].filename}` : null;
+    const statementOfObjective = req.files && req.files['statementOfObjective'] ? `uploads/${req.files['statementOfObjective'][0].filename}` : null;
+    const mandatoryDocument = req.files && req.files['mandatoryDocument'] ? `uploads/${req.files['mandatoryDocument'][0].filename}` : null;
 
     // Check for duplicates
     const exist = await Application.findOne({
@@ -31,7 +33,7 @@ const submitApplication = async (req, res) => {
       mentorName, mentorDesignation, mentorContact, mentorEmail,
       addresseeName, addresseeDesignation, addresseeContact, addresseeEmail,
       status: 'SUBMITTED',
-      offerLetter, statementOfObjective
+      offerLetter, statementOfObjective, mandatoryDocument, studentMessage
     });
 
     await ApplicationLog.create({
