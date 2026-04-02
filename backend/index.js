@@ -34,6 +34,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'NOC backend is running',
+    health: '/health',
+    apiHealth: '/api/health',
+  });
+});
+
 // --- Health Check ---
 app.get(['/health', '/api/health'], (req, res) => {
   res.status(200).json({
