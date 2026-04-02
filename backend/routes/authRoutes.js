@@ -9,6 +9,7 @@ const {
 
 router.post('/send-otp', otpLimiter, emailOnlyValidators, sendOtp);
 router.post('/register', authLimiter, registerValidators, register);
+router.post('/activate-account', authLimiter, registerValidators, register);
 router.post('/forgot-password', otpLimiter, emailOnlyValidators, forgotPassword);
 router.post('/reset-password', authLimiter, resetPasswordValidators, resetPassword);
 router.post('/login', authLimiter, loginValidators, login);

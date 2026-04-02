@@ -1,9 +1,11 @@
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
-const { sendEmail } = require('../utils/emailService');
+const { enqueueEmail } = require('../utils/emailQueue');
 const generateToken = require('../utils/generateToken');
+const { getCache, setCache, delCache } = require('../utils/redis');
+const logger = require('../utils/logger');
 
 // bcrypt rounds defined once — change here to affect all hashing
 const SALT_ROUNDS = 12;
@@ -63,7 +65,7 @@ const sendOtp = async (req, res) => {
     await OTP.findOneAndDelete({ email });
     await OTP.create({ email, otp: otpCode });
 
-    await sendEmail({
+    enqueueEmail({
       to: email,
       subject: 'NOC Portal - Verification Code',
       text: `Your verification code is ${otpCode}. It will expire in 5 minutes.`,
@@ -83,8 +85,15 @@ const register = async (req, res) => {
       return res.status(400).json({ message: 'Only @rgipt.ac.in email addresses are allowed' });
     }
 
-    const validOtp = await OTP.findOne({ email, otp });
-    if (!validOtp) {
+    let cachedOtp = await getCache(`otp:${email}`);
+    let isValid = (cachedOtp === otp);
+
+    if (!cachedOtp) {
+      const dbOtp = await OTP.findOne({ email, otp });
+      if (dbOtp) isValid = true;
+    }
+
+    if (!isValid) {
       return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
@@ -103,7 +112,9 @@ const register = async (req, res) => {
       user = await User.create({ name, email, password: hashedPassword, role: 'Student' });
     }
 
-    await OTP.findOneAndDelete({ email });
+    await delCache(`otp:${email}`);
+    await delCache(`user:${user._id}`);
+    OTP.findOneAndDelete({ email }).catch(() => { });
 
     res.status(201).json({
       _id: user.id,
@@ -131,7 +142,7 @@ const forgotPassword = async (req, res) => {
     await OTP.findOneAndDelete({ email });
     await OTP.create({ email, otp: otpCode });
 
-    await sendEmail({
+    enqueueEmail({
       to: email,
       subject: 'NOC Portal - Password Reset Code',
       text: `Your password reset code is ${otpCode}. It will expire in 5 minutes.`,
@@ -147,8 +158,15 @@ const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
 
-    const validOtp = await OTP.findOne({ email, otp });
-    if (!validOtp) return res.status(400).json({ message: 'Invalid or expired OTP' });
+    let cachedOtp = await getCache(`otp:${email}`);
+    let isValid = (cachedOtp === otp);
+
+    if (!cachedOtp) {
+      const dbOtp = await OTP.findOne({ email, otp });
+      if (dbOtp) isValid = true;
+    }
+
+    if (!isValid) return res.status(400).json({ message: 'Invalid or expired OTP' });
 
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -156,7 +174,9 @@ const resetPassword = async (req, res) => {
     user.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
     await user.save();
 
-    await OTP.findOneAndDelete({ email });
+    await delCache(`otp:${email}`);
+    await delCache(`user:${user._id}`);
+    OTP.findOneAndDelete({ email }).catch(() => { });
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -169,6 +189,7 @@ const login = async (req, res) => {
 
     const user = await User.findOne({ email }).populate('departmentId', 'name code');
     if (user && (await bcrypt.compare(password, user.password))) {
+      logger.info(`User logged in successfully: ${user.email}`);
       res.json({
         _id: user.id,
         name: user.name,
@@ -187,7 +208,14 @@ const login = async (req, res) => {
 
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password').populate('departmentId', 'name code');
+    const cacheKey = `user:${req.user.id}`;
+    let user = await getCache(cacheKey);
+
+    if (!user) {
+      user = await User.findById(req.user.id).select('-password').populate('departmentId', 'name code');
+      if (user) await setCache(cacheKey, user, 300);
+    }
+
     res.json(user);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
