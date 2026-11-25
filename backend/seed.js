@@ -1,48 +1,30 @@
+/**
+ * Wipes the database and loads fresh demo data.
+ * Usage: npm run seed   (uses MONGO_URI / MONGO_DB_NAME from .env)
+ *
+ * In local demo mode (no MONGO_URI) you don't need this: the server seeds itself
+ * on first start. Use `npm run demo:reset` to start over.
+ */
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
-const User = require('./models/User');
-const Department = require('./models/Department');
-const RoutingConfig = require('./models/RoutingConfig');
-
 dotenv.config();
+const { seedDemoData, DEMO_ACCOUNTS, DEMO_PASSWORD } = require('./utils/demoSeed');
 
-const seedData = async () => {
+(async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/noc_portal');
-    
-    // Clear existing data to avoid duplicates
-    await User.deleteMany();
-    await Department.deleteMany();
-    await RoutingConfig.deleteMany();
-
-    // Create a dummy department
-    const dept = await Department.create({ name: 'Computer Science and Engineering', code: 'CSE' });
-
-    const password = await bcrypt.hash('password123', 10);
-
-    // Create dummy users
-    const admin = await User.create({ name: 'Admin User', email: 'admin@rgipt.ac.in', password, role: 'Admin' });
-    const tnpHead = await User.create({ name: 'TNP Head', email: 'tnphead@rgipt.ac.in', password, role: 'TNPHead' });
-    const officer = await User.create({ name: 'TNP Officer', email: 'officer@rgipt.ac.in', password, role: 'DeptOfficer', departmentId: dept._id });
-    const student = await User.create({ name: 'Dummy Student', email: 'student@rgipt.ac.in', password, role: 'Student', departmentId: dept._id, rollNumber: '21CS101' });
-
-    // Link officer to department routing
-    await RoutingConfig.create({ departmentId: dept._id, primaryApproverEmail: officer.email, roleType: 'tnp_coordinator' });
-
-    console.log('----------------------------------------------------');
-    console.log('Dummy Users provisioned successfully! Password for all is: password123');
-    console.log('Admin:       admin@rgipt.ac.in');
-    console.log('TNP Head:    tnphead@rgipt.ac.in');
-    console.log('TNP Officer: officer@rgipt.ac.in');
-    console.log('Student:     student@rgipt.ac.in');
-    console.log('----------------------------------------------------');
-    
+    const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
+    if (!uri) {
+      console.error('MONGO_URI is not set. In local demo mode just run `npm run demo:reset` instead.');
+      process.exit(1);
+    }
+    await mongoose.connect(uri.trim(), { dbName: process.env.MONGO_DB_NAME || undefined });
+    console.log(`Seeding database "${mongoose.connection.name}" (existing data will be wiped)...`);
+    await seedDemoData({ reset: true });
+    console.log(`Demo data loaded. Password for every account: ${DEMO_PASSWORD}`);
+    DEMO_ACCOUNTS.forEach((a) => console.log(`  ${a.role.padEnd(15)} ${a.email}`));
     process.exit(0);
   } catch (error) {
     console.error(error);
     process.exit(1);
   }
-};
-
-seedData();
+})();

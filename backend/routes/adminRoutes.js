@@ -4,7 +4,8 @@ const { body } = require('express-validator');
 const {
   getDepartments, createDepartment,
   getRoutingConfigs, createOrUpdateRoutingConfig,
-  getUsers, assignRole
+  getUsers, assignRole, resendInvite, deleteUser,
+  getGlobalRoles, updateGlobalRole
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -17,6 +18,10 @@ const validate = (req, res, next) => {
 };
 
 router.use(protect);
+
+// The TNP Head / CDC / TNP Office dashboards also need the department list (filter dropdowns).
+router.get('/departments', authorize('Admin', 'TNPHead', 'CDCChairperson', 'TNPOffice'), getDepartments);
+
 router.use(authorize('Admin'));
 
 router.route('/departments')
@@ -42,9 +47,26 @@ router.route('/users').get(getUsers);
 
 router.route('/users/assign-role').put(
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('role').isIn(['Student', 'DeptOfficer', 'TNPHead', 'Admin']).withMessage('Invalid role'),
+  body('role').isIn(['Student', 'DeptOfficer', 'TNPHead', 'TNPOffice', 'Admin', 'CDCChairperson']).withMessage('Invalid role'),
   validate,
   assignRole
+);
+
+router.route('/users/resend-invite').post(
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  validate,
+  resendInvite
+);
+
+router.route('/users/:id').delete(deleteUser);
+
+router.route('/global-roles').get(getGlobalRoles);
+
+router.route('/global-roles/assign').post(
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('role').isIn(['TNPHead', 'TNPOffice', 'CDCChairperson']).withMessage('Invalid global role'),
+  validate,
+  updateGlobalRole
 );
 
 module.exports = router;

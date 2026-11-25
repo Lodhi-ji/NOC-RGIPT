@@ -7,6 +7,10 @@ const generateToken = require('../utils/generateToken');
 const { getCache, setCache, delCache } = require('../utils/redis');
 const logger = require('../utils/logger');
 
+// In DEMO_MODE the OTP is also returned in the API response so a live demo
+// works without a real mailbox. Never enable DEMO_MODE in production.
+const isDemoMode = process.env.DEMO_MODE === 'true';
+
 // bcrypt rounds defined once — change here to affect all hashing
 const SALT_ROUNDS = 12;
 
@@ -57,7 +61,7 @@ const sendOtp = async (req, res) => {
     }
 
     const userExists = await User.findOne({ email });
-    if (userExists && userExists.password !== 'PENDING_USER_NO_PASSWORD') {
+    if (userExists && !userExists.isPending) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
@@ -71,7 +75,7 @@ const sendOtp = async (req, res) => {
       text: `Your verification code is ${otpCode}. It will expire in 5 minutes.`,
     });
 
-    res.json({ message: 'OTP sent to email successfully' });
+    res.json({ message: 'OTP sent to email successfully', ...(isDemoMode && { devOtp: otpCode }) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -98,7 +102,7 @@ const register = async (req, res) => {
     }
 
     let user = await User.findOne({ email });
-    if (user && user.password !== 'PENDING_USER_NO_PASSWORD') {
+    if (user && !user.isPending) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
@@ -107,6 +111,7 @@ const register = async (req, res) => {
     if (user) {
       user.name = name;
       user.password = hashedPassword;
+      user.isPending = false;
       await user.save();
     } else {
       user = await User.create({ name, email, password: hashedPassword, role: 'Student' });
@@ -117,10 +122,11 @@ const register = async (req, res) => {
     OTP.findOneAndDelete({ email }).catch(() => { });
 
     res.status(201).json({
-      _id: user.id,
+      _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
+      department: user.departmentId, // consistent with other auth routes
       token: generateToken(user._id),
     });
   } catch (error) {
@@ -148,7 +154,7 @@ const forgotPassword = async (req, res) => {
       text: `Your password reset code is ${otpCode}. It will expire in 5 minutes.`,
     });
 
-    res.json({ message: 'If this email is registered, a reset code has been sent.' });
+    res.json({ message: 'If this email is registered, a reset code has been sent.', ...(isDemoMode && { devOtp: otpCode }) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -189,9 +195,19 @@ const login = async (req, res) => {
 
     const user = await User.findOne({ email }).populate('departmentId', 'name code');
     if (user && (await bcrypt.compare(password, user.password))) {
+      // Clear pending flag on first successful login + derive name from email
+      if (user.isPending) {
+        user.isPending = false;
+        // Set a meaningful name from the email prefix (e.g. "24pp3006" from "24pp3006@rgipt.ac.in")
+        if (user.name === 'Pending User') {
+          const roleNames = { DeptOfficer: 'TNP Officer', TNPHead: 'TNP Head', TNPOffice: 'TNP Office', Admin: 'Admin', Student: 'Student', CDCChairperson: 'CDC Chairperson' };
+          user.name = roleNames[user.role] || user.role;
+        }
+        await user.save();
+      }
       logger.info(`User logged in successfully: ${user.email}`);
       res.json({
-        _id: user.id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
@@ -212,8 +228,13 @@ const getMe = async (req, res) => {
     let user = await getCache(cacheKey);
 
     if (!user) {
-      user = await User.findById(req.user.id).select('-password').populate('departmentId', 'name code');
-      if (user) await setCache(cacheKey, user, 300);
+      const dbUser = await User.findById(req.user.id).select('-password').populate('departmentId', 'name code');
+      if (dbUser) {
+        // Map departmentId to department key for frontend consistency
+        const { departmentId, ...userData } = dbUser.toObject();
+        user = { ...userData, department: departmentId };
+        await setCache(cacheKey, user, 300);
+      }
     }
 
     res.json(user);

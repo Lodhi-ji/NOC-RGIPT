@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import { formatDate, formatFileUrl, calculateDuration, calculateStudentYear, formatTodayDate, getGreeting } from '../utils/helpers';
 
@@ -46,7 +45,7 @@ const ExpandedDetails = ({ app }) => (
         <div>
           <p className="text-xs text-slate-500">Type & Duration</p>
           <div className="flex items-center gap-2">
-            <p className="text-sm font-bold text-indigo-700">{app.internshipType}</p>
+            <p className="text-sm font-bold text-indigo-700">{app.internshipType}{app.otherInternshipDescription ? ` (${app.otherInternshipDescription})` : ''}</p>
             <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded uppercase tracking-widest border border-slate-200">{calculateDuration(app.durationFrom, app.durationTo)}</span>
           </div>
           <p className="text-xs text-slate-600 mt-1">{app.durationFrom} to {app.durationTo}</p>
@@ -66,10 +65,16 @@ const ExpandedDetails = ({ app }) => (
     <div className="space-y-4">
       <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Review Documents</h4>
       <div className="flex flex-wrap gap-3">
+        {app.marksheet && (
+          <a href={formatFileUrl(app.marksheet)} target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-2.5 bg-white border border-rose-200 text-rose-700 rounded-xl text-xs font-bold hover:bg-rose-50 transition-all shadow-sm">
+            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            Marksheet
+          </a>
+        )}
         {app.mandatoryDocument && (
           <a href={formatFileUrl(app.mandatoryDocument)} target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-2.5 bg-white border border-rose-200 text-rose-700 rounded-xl text-xs font-bold hover:bg-rose-50 transition-all shadow-sm">
             <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            SOP / Marksheet
+            SOP / Marksheet (Legacy)
           </a>
         )}
         {app.offerLetter && (
@@ -93,10 +98,18 @@ const ExpandedDetails = ({ app }) => (
       </div>
     </div>
 
+    {/* Statement of Purpose */}
+    {app.sopText && (
+      <div className="md:col-span-2">
+        <strong className="text-slate-900">Statement of Purpose:</strong>
+        <p className="mt-1 text-slate-600 whitespace-pre-wrap">{app.sopText}</p>
+      </div>
+    )}
+
     {/* Mentor & Addressee */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
       <div className="space-y-2">
-        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Internal Mentor</h4>
+        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Mentor / H.O.D. / Contact Person</h4>
         <p className="text-sm font-bold text-slate-800">{app.mentorName}</p>
         <p className="text-xs text-slate-500">{app.mentorDesignation} | {app.mentorEmail} | {app.mentorContact}</p>
       </div>
@@ -155,7 +168,6 @@ const AppCard = ({ app, actionType, remarks, setRemarks, handleAction }) => {
 
   const getGradient = () => {
     if (actionType === 'REVIEW') return 'bg-gradient-to-b from-amber-400 to-orange-500';
-    if (actionType === 'COLLECT') return 'bg-gradient-to-b from-blue-400 to-indigo-600';
     return 'bg-gradient-to-b from-slate-300 to-slate-400';
   };
 
@@ -177,8 +189,9 @@ const AppCard = ({ app, actionType, remarks, setRemarks, handleAction }) => {
           {actionType === 'NONE' && (
             <div className="flex flex-col items-end gap-2">
               <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${app.status.includes('REJECTED') ? 'bg-rose-50 text-rose-600 border-rose-100' :
-                app.status.includes('APPROVED') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                  'bg-slate-100 text-slate-600 border-slate-200'
+                app.status === 'COLLECTED' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
+                  (app.status === 'READY_FOR_COLLECTION' || app.status.includes('APPROVED')) ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                    'bg-slate-100 text-slate-600 border-slate-200'
                 }`}>
                 {app.status.replace(/_/g, ' ')}
               </span>
@@ -208,6 +221,7 @@ const AppCard = ({ app, actionType, remarks, setRemarks, handleAction }) => {
         {showDetails && <ExpandedDetails app={app} />}
 
         <div className="mt-6 pt-5 border-t border-slate-100 flex flex-wrap gap-6 text-sm">
+          {app.marksheet && <a href={formatFileUrl(app.marksheet)} target="_blank" rel="noreferrer" className="inline-flex items-center font-bold text-rose-600 hover:text-rose-800 transition-colors"><svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Marksheet</a>}
           {app.mandatoryDocument && <a href={formatFileUrl(app.mandatoryDocument)} target="_blank" rel="noreferrer" className="inline-flex items-center font-bold text-rose-600 hover:text-rose-800 transition-colors"><svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> SOP/Marksheet</a>}
           {app.offerLetter && <a href={formatFileUrl(app.offerLetter)} target="_blank" rel="noreferrer" className="inline-flex items-center font-bold text-indigo-600 hover:text-indigo-800 transition-colors"><svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Offer Letter</a>}
           {app.statementOfObjective && <a href={formatFileUrl(app.statementOfObjective)} target="_blank" rel="noreferrer" className="inline-flex items-center font-bold text-indigo-600 hover:text-indigo-800 transition-colors"><svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Statement</a>}
@@ -231,20 +245,11 @@ const AppCard = ({ app, actionType, remarks, setRemarks, handleAction }) => {
         </div>
       )}
 
-      {actionType === 'COLLECT' && (
-        <div className="w-full md:w-80 flex flex-col justify-center bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 relative">
-          <button onClick={() => handleAction(app._id, 'COLLECTED')} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs hover:from-blue-700 hover:to-indigo-700 hover:-translate-y-0.5 shadow-xl shadow-indigo-100 transition-all mb-3">
-            Mark Collected ✔
-          </button>
-          <p className="text-[10px] text-center font-black text-indigo-500 uppercase tracking-widest">Hardcopy pickup confirmation</p>
-        </div>
-      )}
     </div>
   );
 };
 
 const TNPHeadDashboard = () => {
-  const { user } = useContext(AuthContext);
   const [applications, setApplications] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [remarks, setRemarks] = useState({});
@@ -258,7 +263,7 @@ const TNPHeadDashboard = () => {
   const [filterDate, setFilterDate] = useState('');
 
   useEffect(() => {
-    document.title = 'RGIPT NOC — TNP Head Dashboard';
+    document.title = 'RGIPT NOC — Chairman T&P Dashboard';
     fetchApplications();
     fetchDepartments();
   }, []);
@@ -289,22 +294,27 @@ const TNPHeadDashboard = () => {
       const newRemarks = { ...remarks };
       delete newRemarks[id];
       setRemarks(newRemarks);
-      toast.success(`Application ${action.toLowerCase()}ed successfully!`);
+      toast.success(`Application ${({ APPROVE: 'approved', REJECT: 'rejected', COLLECTED: 'marked as collected' })[action] || 'updated'} successfully!`);
       fetchApplications();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error updating status');
     }
   };
 
-  const pendingApps = applications.filter(a => a.status === 'UNDER_REVIEW_HEAD');
-  const collectingApps = applications.filter(a => a.status === 'READY_FOR_COLLECTION');
+  const pendingApps = useMemo(() => {
+    return applications.filter(a => a.status === 'UNDER_REVIEW_HEAD');
+  }, [applications]);
+
+  const outboxApps = useMemo(() => {
+    return applications.filter(a => a.status === 'READY_FOR_COLLECTION');
+  }, [applications]);
+
   const pastApps = useMemo(() => {
     return applications.filter(a => {
-      const isHistorical = a.status !== 'UNDER_REVIEW_HEAD' && a.status !== 'READY_FOR_COLLECTION';
-      const isMine = (a.approvedBy?._id || a.approvedBy) === user?._id || (a.rejectedBy?._id || a.rejectedBy) === user?._id;
-      return isHistorical && isMine;
+      // Master Ledger: Include everything that moved past review stages
+      return a.status !== 'UNDER_REVIEW_HEAD' && a.status !== 'PENDING' && a.status !== 'UNDER_REVIEW_DEPT';
     });
-  }, [applications, user]);
+  }, [applications]);
 
   const filteredHistoryApps = useMemo(() => {
     const approvedStatuses = ['READY_FOR_COLLECTION', 'COLLECTED'];
@@ -371,7 +381,7 @@ const TNPHeadDashboard = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-              {getGreeting()}, Head Officer
+              {getGreeting()}, Chairman T&P
             </h1>
             <p className="text-slate-500 mt-1 font-medium">{formatTodayDate()}</p>
           </div>
@@ -384,21 +394,21 @@ const TNPHeadDashboard = () => {
               onClick={() => setActiveTab('review')}
               className={`px-8 py-2.5 text-sm transition-all duration-200 rounded-xl flex items-center gap-2 ${activeTab === 'review' ? 'bg-white shadow-md text-indigo-700 font-bold' : 'text-slate-500 hover:text-slate-700 font-medium'}`}
             >
-              Pending Review
+              Inbox
               {pendingApps.length > 0 && <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-[10px] font-black">{pendingApps.length}</span>}
             </button>
             <button
-              onClick={() => setActiveTab('collection')}
-              className={`px-8 py-2.5 text-sm transition-all duration-200 rounded-xl flex items-center gap-2 ${activeTab === 'collection' ? 'bg-white shadow-md text-indigo-700 font-bold' : 'text-slate-500 hover:text-slate-700 font-medium'}`}
+              onClick={() => setActiveTab('outbox')}
+              className={`px-8 py-2.5 text-sm transition-all duration-200 rounded-xl flex items-center gap-2 ${activeTab === 'outbox' ? 'bg-white shadow-md text-indigo-700 font-bold' : 'text-slate-500 hover:text-slate-700 font-medium'}`}
             >
-              Ready for Collection
-              {collectingApps.length > 0 && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[10px] font-black">{collectingApps.length}</span>}
+              Outbox
+              {outboxApps.length > 0 && <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-black">{outboxApps.length}</span>}
             </button>
             <button
               onClick={() => setActiveTab('history')}
               className={`px-8 py-2.5 text-sm transition-all duration-200 rounded-xl ${activeTab === 'history' ? 'bg-white shadow-md text-indigo-700 font-bold' : 'text-slate-500 hover:text-slate-700 font-medium'}`}
             >
-              History Archive
+              Archive
             </button>
           </div>
         </div>
@@ -406,10 +416,10 @@ const TNPHeadDashboard = () => {
         {activeTab === 'review' && (
           <div className="space-y-6">
             {fetching ? (
-            <div className="flex justify-center py-16">
-              <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-            </div>
-          ) : pendingApps.length === 0 ? (
+              <div className="flex justify-center py-16">
+                <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+              </div>
+            ) : pendingApps.length === 0 ? (
               <EmptyState
                 title="All Caught Up!"
                 message="No applications are currently waiting for your final review."
@@ -421,16 +431,20 @@ const TNPHeadDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'collection' && (
+        {activeTab === 'outbox' && (
           <div className="space-y-6">
-            {collectingApps.length === 0 ? (
+            {fetching ? (
+              <div className="flex justify-center py-16">
+                <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+              </div>
+            ) : outboxApps.length === 0 ? (
               <EmptyState
-                title="No Pending Pickups"
-                message="No students are currently waiting to collect their NOC hardcopies."
-                icon={<svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0a2 2 0 01-2 2H6a2 2 0 01-2-2m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>}
+                title="Outbox Empty"
+                message="No applications are currently waiting for student collection."
+                icon={<svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0a2 2 0 01-2 2H6a2 2 0 01-2-2m16 0V9a2 2 0 00-2-2H6a2 2 0 00-2 2v4m16 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2v-1m16 0H4" /></svg>}
               />
-            ) : collectingApps.map(app =>
-              <AppCard key={app._id} app={app} actionType="COLLECT" remarks={remarks} setRemarks={setRemarks} handleAction={handleAction} />
+            ) : outboxApps.map(app =>
+              <AppCard key={app._id} app={app} actionType="NONE" remarks={remarks} setRemarks={setRemarks} handleAction={handleAction} />
             )}
           </div>
         )}

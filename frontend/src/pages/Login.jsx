@@ -3,6 +3,18 @@ import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { toast } from 'react-hot-toast';
 
+// One-click demo accounts (only shown when VITE_DEMO_MODE=true, i.e. local demo)
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
+const DEMO_PASSWORD = 'password123';
+const DEMO_ACCOUNTS = [
+  { role: 'Student', email: 'student@rgipt.ac.in', desc: 'Apply & track NOCs', color: 'bg-indigo-500' },
+  { role: 'Dept. Officer', email: 'officer@rgipt.ac.in', desc: 'CSE first-level review', color: 'bg-amber-500' },
+  { role: 'Chairman T&P', email: 'tnphead@rgipt.ac.in', desc: 'Final approval', color: 'bg-emerald-500' },
+  { role: 'TNP Office', email: 'tnpoffice@rgipt.ac.in', desc: 'Hand over & mark collected', color: 'bg-sky-500' },
+  { role: 'CDC Chairperson', email: 'cdc@rgipt.ac.in', desc: 'Oversight (read-only)', color: 'bg-violet-500' },
+  { role: 'Admin', email: 'admin@rgipt.ac.in', desc: 'Departments & roles', color: 'bg-rose-500' },
+];
+
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -12,16 +24,28 @@ const Login = () => {
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
+    doLogin(email, password);
+  };
+
+  const doLogin = async (loginEmail, loginPassword) => {
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      await login(loginEmail, loginPassword);
       toast.success('Login successful!');
       navigate('/');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to login');
+      const status = err.response?.status;
+      const message = err.response?.data?.message;
+      if (status === 401) {
+        setError('invalid_credentials');
+      } else if (status === 404) {
+        setError('not_found');
+      } else {
+        setError(message || 'Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -47,10 +71,35 @@ const Login = () => {
             <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Welcome Back</h2>
             <p className="text-slate-500 font-medium mb-8">Please enter your credentials to access your account.</p>
 
-            {error && <div className="bg-red-50 text-red-600 border border-red-200 p-4 rounded-xl mb-6 text-sm font-medium flex items-center">
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"></path></svg>
-              {error}
-            </div>}
+            {error && (
+              <div className="bg-red-50 border border-red-200 p-4 rounded-xl mb-6 text-sm">
+                <div className="flex items-start gap-2 text-red-600 font-medium">
+                  <svg className="w-5 h-5 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"></path></svg>
+                  <span>
+                    {error === 'invalid_credentials'
+                      ? 'Incorrect email or password.'
+                      : error === 'not_found'
+                      ? 'No account found with this email.'
+                      : error}
+                  </span>
+                </div>
+                {(error === 'invalid_credentials' || error === 'not_found') && (
+                  <div className="mt-2 pl-7">
+                    {error === 'not_found' ? (
+                      <span className="text-slate-600">
+                        Want to create one?{' '}
+                        <Link to="/register" className="text-indigo-600 font-bold hover:underline">Register here</Link>
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">
+                        Forgot your password?{' '}
+                        <Link to="/forgot-password" className="text-indigo-600 font-bold hover:underline">Reset it here</Link>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
@@ -97,6 +146,47 @@ const Login = () => {
                 {loading ? 'Authenticating...' : 'Sign In'}
               </button>
             </form>
+
+            {DEMO_MODE && (
+              <div className="mt-8 rounded-2xl border border-indigo-100 bg-indigo-50/40 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-indigo-100 bg-indigo-50">
+                  <p className="text-xs font-extrabold uppercase tracking-widest text-indigo-700">Demo Credentials</p>
+                  <p className="text-xs text-slate-600">
+                    Password: <code className="font-mono font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border border-indigo-100">{DEMO_PASSWORD}</code>
+                  </p>
+                </div>
+                <ul className="divide-y divide-indigo-100/70">
+                  {DEMO_ACCOUNTS.map(acc => (
+                    <li key={acc.email} className={'flex items-center gap-3 px-4 py-2.5 transition-colors ' + (email === acc.email ? 'bg-white' : 'hover:bg-white/70')}>
+                      <button
+                        type="button"
+                        title="Fill the login form with these credentials"
+                        onClick={() => { setEmail(acc.email); setPassword(DEMO_PASSWORD); setError(''); }}
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={'w-2 h-2 rounded-full shrink-0 ' + acc.color} />
+                          <span className="font-bold text-slate-800 text-sm whitespace-nowrap">{acc.role}</span>
+                          <span className="hidden sm:inline text-[11px] text-slate-400 truncate">· {acc.desc}</span>
+                        </div>
+                        <p className="font-mono text-xs text-slate-600 mt-0.5 ml-4 truncate">{acc.email}</p>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() => { setEmail(acc.email); setPassword(DEMO_PASSWORD); doLogin(acc.email, DEMO_PASSWORD); }}
+                        className="shrink-0 text-xs font-bold text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                      >
+                        Login →
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-slate-500 text-center px-4 py-2 border-t border-indigo-100">
+                  Click a role to fill the form, or <strong>Login →</strong> to sign in directly.
+                </p>
+              </div>
+            )}
 
             <div className="mt-8 text-center text-sm font-medium text-slate-600">
               Don't have an account? <Link to="/register" className="text-indigo-600 font-bold hover:underline ml-1">Register here</Link>

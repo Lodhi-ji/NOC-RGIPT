@@ -20,7 +20,12 @@ const ForgotPassword = () => {
     setError(''); setMessage(''); setLoading(true);
     try {
       const res = await api.post('/auth/forgot-password', { email: formData.email });
-      setMessage(res.data.message || 'OTP sent to your email! (Check inbox)');
+      if (res.data.devOtp) {
+        setFormData(prev => ({ ...prev, otp: res.data.devOtp }));
+        setMessage('Demo mode: reset code ' + res.data.devOtp + ' has been auto-filled.');
+      } else {
+        setMessage(res.data.message || 'OTP sent to your email! (Check inbox)');
+      }
       setShowOtpField(true);
     } catch (err) {
       setError(err.response?.data?.message || 'Error sending password reset request');
@@ -37,7 +42,10 @@ const ForgotPassword = () => {
       toast.success(res.data.message);
       navigate('/login');
     } catch (err) {
-      setError(err.response?.data?.message || 'Error resetting password');
+      // Handle validation errors array or general error message
+      const errorMsg = err.response?.data?.errors?.[0]?.msg || err.response?.data?.message || 'Error resetting password';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -104,12 +112,13 @@ const ForgotPassword = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">New Password</label>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">New Password (min. 8 characters)</label>
                     <div className="relative">
                       <input
                         type={showPassword ? "text" : "password"}
                         name="newPassword"
                         required
+                        minLength="8"
                         placeholder="••••••••"
                         className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all shadow-sm pr-16"
                         value={formData.newPassword}

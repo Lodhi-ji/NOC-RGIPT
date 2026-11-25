@@ -1,41 +1,16 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const mailTransportUrl = process.env.RESEND_SMTP_URL || process.env.SMTP_URL;
-const isUrlValue = (value) => /^smtps?:\/\//i.test(String(value || ''));
+// Initialize Resend with the API key from env.
+// Supports plain key (re_xxx) or key accidentally wrapped in an SMTP URL string.
+let apiKey = process.env.RESEND_API_KEY || process.env.RESEND_SMTP_URL || process.env.SMTP_URL || '';
+if (apiKey.includes('re_') && !apiKey.startsWith('re_')) {
+  // Extract key from a URL-like string — allow letters, digits, underscores
+  apiKey = apiKey.match(/(re_[a-zA-Z0-9_]+)/)?.[1] || apiKey;
+}
 
-const createTransporter = () => {
-  if (mailTransportUrl) {
-    if (isUrlValue(mailTransportUrl)) {
-      return nodemailer.createTransport(mailTransportUrl);
-    }
-
-    // Support users pasting a Resend API key into RESEND_SMTP_URL.
-    return nodemailer.createTransport({
-      host: 'smtp.resend.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: 'resend',
-        pass: mailTransportUrl,
-      },
-    });
-  }
-
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT, 10),
-    secure: parseInt(process.env.SMTP_PORT, 10) === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD,
-    },
-  });
-};
-
-// Singleton transporter — created once on startup, reused for every email
-const transporter = createTransporter();
-
-const defaultFrom = process.env.MAIL_FROM || process.env.SMTP_FROM;
+// Only create the client when a key exists (the SDK throws on an empty key).
+const resend = apiKey ? new Resend(apiKey) : null;
+const defaultFrom = process.env.MAIL_FROM || process.env.SMTP_FROM || 'Acme <onboarding@resend.dev>';
 
 /**
  * Escapes user-supplied content to prevent XSS in HTML emails.
@@ -49,23 +24,45 @@ const escapeHtml = (str) =>
     .replace(/'/g, '&#039;');
 
 /**
- * Generic email sender.
+ * Generic email sender utilizing native Resend SDK.
  * @param {{ to: string, subject: string, text?: string, html?: string }} options
  */
 const sendEmail = async ({ to, email, subject, text, message, html }) => {
   const recipient = to || email;
   const body = text || message;
+
+  // Demo accounts (admin@, student@, ... on the real rgipt.ac.in domain) must never
+  // receive real email - in DEMO_MODE those messages are printed to the console instead.
+  const recipients = [].concat(recipient || []).map((r) => String(r).toLowerCase());
+  const toDemoAccount = process.env.DEMO_MODE === 'true' &&
+    recipients.some((r) => require('./demoSeed').DEMO_ACCOUNTS.some((a) => a.email === r));
+
+  // No Resend key (local demo) or demo recipient: print the email to the server console.
+  if (!apiKey || toDemoAccount) {
+    console.log(`\n======== [EMAIL - console only: ${!apiKey ? 'no RESEND key configured' : 'demo account'}] ========`);
+    console.log(`To:      ${recipient}`);
+    console.log(`Subject: ${subject}`);
+    console.log(body || String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+    console.log('==================================================================\n');
+    return;
+  }
+
   try {
-    await transporter.sendMail({
+    const { data, error } = await resend.emails.send({
       from: defaultFrom,
-      to: recipient,
+      to: typeof recipient === 'string' ? [recipient] : recipient,
       subject,
       text: body,
       html,
     });
-    console.log(`Email sent to ${recipient}`);
+
+    if (error) {
+      return console.error('[Resend SDK Error] Email sending failed:', error.message);
+    }
+
+    console.log(`[Resend SDK] Email sent securely to ${recipient} (ID: ${data.id})`);
   } catch (err) {
-    console.error('Email sending failed:', err.message);
+    console.error('[Resend SDK] Critical failure connecting to Resend API:', err.message);
   }
 };
 
@@ -88,7 +85,7 @@ const sendNOCStatusEmail = async ({ studentEmail, studentName, companyName, newS
     html = `
       <p>Dear ${safeName},</p>
       <p>Your NOC requisition for <strong>${safeCompany}</strong> has been verified and cleared by your Department Officer.</p>
-      <p>It has now been forwarded to the <strong>TNP Head</strong> for final approval.</p>
+      <p>It has now been forwarded to the <strong>Chairman T&amp;P</strong> for final approval.</p>
       ${safeRemarks}
       <p>Regards,<br/>Training &amp; Placement Cell</p>
     `;
@@ -96,8 +93,17 @@ const sendNOCStatusEmail = async ({ studentEmail, studentName, companyName, newS
     subject = `NOC Approved: Ready for Collection — ${escapeHtml(companyName)}`;
     html = `
       <p>Dear ${safeName},</p>
-      <p>Congratulations! Your NOC for <strong>${safeCompany}</strong> has been officially approved by the TNP Head.</p>
+      <p>Congratulations! Your NOC for <strong>${safeCompany}</strong> has been officially approved by the Chairman T&amp;P.</p>
       <p>Your document is now <strong>ready for collection</strong>. Please visit the TNP cell to collect your hardcopy.</p>
+      ${safeRemarks}
+      <p>Regards,<br/>Training &amp; Placement Cell</p>
+    `;
+  } else if (status === 'COLLECTED') {
+    subject = `NOC Collected — ${escapeHtml(companyName)}`;
+    html = `
+      <p>Dear ${safeName},</p>
+      <p>This is to confirm that the hardcopy of your NOC for <strong>${safeCompany}</strong> has been collected by the TNP Office.</p>
+      <p>No further action is required from your end.</p>
       ${safeRemarks}
       <p>Regards,<br/>Training &amp; Placement Cell</p>
     `;
@@ -115,4 +121,92 @@ const sendNOCStatusEmail = async ({ studentEmail, studentName, companyName, newS
   await sendEmail({ to: studentEmail, subject, html });
 };
 
-module.exports = { sendEmail, sendNOCStatusEmail };
+/**
+ * Sends a notification email to the TNP Office when a student's NOC is approved
+ * and ready for physical collection.
+ * @param {{ tnpOfficeEmail: string, studentName: string, rollNumber: string, companyName: string }} options
+ */
+const sendTNPOfficeBroadcast = async ({ tnpOfficeEmail, studentName, rollNumber, companyName }) => {
+  const safeName = escapeHtml(studentName || 'Student');
+  const safeRoll = escapeHtml(rollNumber || 'N/A');
+  const safeCompany = escapeHtml(companyName || 'the organization');
+
+  const subject = `New NOC Ready for Collection — ${safeName} (${safeRoll})`;
+  const html = `
+    <p>Dear TNP Office,</p>
+    <p>The NOC for the following student has been approved and is ready for physical collection:</p>
+    <ul>
+      <li><strong>Student Name:</strong> ${safeName}</li>
+      <li><strong>Roll Number:</strong> ${safeRoll}</li>
+      <li><strong>Company:</strong> ${safeCompany}</li>
+    </ul>
+    <p>Please arrange for the hardcopy to be collected at the earliest.</p>
+    <p>Regards,<br/>Training &amp; Placement Cell</p>
+  `;
+
+  await sendEmail({ to: tnpOfficeEmail, subject, html });
+};
+
+/**
+ * Notifies a Department Officer when a new NOC application is submitted.
+ * @param {{ officerEmail: string, studentName: string, companyName: string, rollNumber: string }} options
+ */
+const notifyOfficerNewApplication = async ({ officerEmail, studentName, companyName, rollNumber }) => {
+  const safeName = escapeHtml(studentName || 'Student');
+  const safeRoll = escapeHtml(rollNumber || 'N/A');
+  const safeCompany = escapeHtml(companyName || 'the organization');
+
+  const subject = `New NOC Application — ${safeName} (${safeRoll})`;
+  const html = `
+    <p>Dear Officer,</p>
+    <p>A new NOC requisition has been submitted by <strong>${safeName}</strong> (Roll: <strong>${safeRoll}</strong>) for <strong>${safeCompany}</strong>.</p>
+    <p>Please log in to your dashboard to review and process this application.</p>
+    <p>Regards,<br/>NOC Portal System</p>
+  `;
+
+  await sendEmail({ to: officerEmail, subject, html });
+};
+
+/**
+ * Notifies the TNP Head when an application has been forwarded by a Department Officer.
+ * @param {{ headEmail: string, studentName: string, companyName: string, departmentName: string, rollNumber: string }} options
+ */
+const notifyHeadApplicationForwarded = async ({ headEmail, studentName, companyName, departmentName, rollNumber }) => {
+  const safeName = escapeHtml(studentName || 'Student');
+  const safeRoll = escapeHtml(rollNumber || 'N/A');
+  const safeCompany = escapeHtml(companyName || 'the organization');
+  const safeDept = escapeHtml(departmentName || 'Unknown Department');
+
+  const subject = `NOC Application Forwarded — ${safeName} (${safeDept})`;
+  const html = `
+    <p>Dear Chairman T&amp;P,</p>
+    <p>An NOC requisition for <strong>${safeName}</strong> (Roll: <strong>${safeRoll}</strong>) from the <strong>${safeDept}</strong> department has been verified and forwarded to your desk for final approval.</p>
+    <p><strong>Company:</strong> ${safeCompany}</p>
+    <p>Please log in to your dashboard to review and approve this application.</p>
+    <p>Regards,<br/>NOC Portal System</p>
+  `;
+
+  await sendEmail({ to: headEmail, subject, html });
+};
+
+/**
+ * Notifies the TNP Office when an NOC has been approved by TNP Head and is ready for collection.
+ * @param {{ officeEmail: string, studentName: string, rollNumber: string, companyName: string }} options
+ */
+const notifyOfficeNOCReady = async ({ officeEmail, studentName, rollNumber, companyName }) => {
+  const safeName = escapeHtml(studentName || 'Student');
+  const safeRoll = escapeHtml(rollNumber || 'N/A');
+  const safeCompany = escapeHtml(companyName || 'the organization');
+
+  const subject = `NOC Ready for Collection — ${safeName} (${safeRoll})`;
+  const html = `
+    <p>Dear TNP Office,</p>
+    <p>The NOC requisition for <strong>${safeName}</strong> (Roll: <strong>${safeRoll}</strong>) at <strong>${safeCompany}</strong> has been approved by the Chairman T&amp;P and is now ready for collection/final processing.</p>
+    <p>Please prepare the hardcopy for student collection.</p>
+    <p>Regards,<br/>NOC Portal System</p>
+  `;
+
+  await sendEmail({ to: officeEmail, subject, html });
+};
+
+module.exports = { sendEmail, sendNOCStatusEmail, sendTNPOfficeBroadcast, notifyOfficerNewApplication, notifyHeadApplicationForwarded, notifyOfficeNOCReady };

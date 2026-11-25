@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { formatRole } from '../utils/formatRole';
 
 const Navbar = () => {
   const { user, logout } = useContext(AuthContext);
@@ -25,7 +26,7 @@ const Navbar = () => {
             {user ? (
               <>
                 <span className="text-gray-700 font-medium">
-                  {user.name} ({user.role})
+                  {user.role === 'TNPHead' ? 'Chairman T&P' : `${user.name} (${formatRole(user.role)})`}
                 </span>
                 <button
                   onClick={handleLogout}

@@ -50,7 +50,7 @@ const ExpandedDetails = ({ app, isPending, remarks, setRemarks, handleAction }) 
           <div>
             <p className="text-xs text-slate-500">Type & Duration</p>
             <div className="flex items-center gap-2">
-              <p className="text-sm font-bold text-indigo-700">{app.internshipType}</p>
+              <p className="text-sm font-bold text-indigo-700">{app.internshipType}{app.otherInternshipDescription ? ` (${app.otherInternshipDescription})` : ''}</p>
               {duration && <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded uppercase tracking-widest border border-slate-200">{duration}</span>}
             </div>
             <p className="text-xs text-slate-600 mt-1">{app.durationFrom} to {app.durationTo}</p>
@@ -66,10 +66,24 @@ const ExpandedDetails = ({ app, isPending, remarks, setRemarks, handleAction }) 
         </div>
       )}
 
+      {/* Statement of Purpose */}
+      {app.sopText && (
+        <div className="md:col-span-2">
+          <strong className="text-slate-900">Statement of Purpose:</strong>
+          <p className="mt-1 text-slate-600 whitespace-pre-wrap">{app.sopText}</p>
+        </div>
+      )}
+
       {/* Attachments */}
       <div className="space-y-4">
         <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Review Documents</h4>
         <div className="flex flex-wrap gap-3">
+          {app.marksheet && (
+            <a href={formatFileUrl(app.marksheet)} target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-2.5 bg-white border border-rose-200 text-rose-700 rounded-xl text-xs font-bold hover:bg-rose-50 transition-all shadow-sm">
+              <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              Marksheet
+            </a>
+          )}
           {app.mandatoryDocument && (
             <a href={formatFileUrl(app.mandatoryDocument)} target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-2.5 bg-white border border-rose-200 text-rose-700 rounded-xl text-xs font-bold hover:bg-rose-50 transition-all shadow-sm">
               <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -100,7 +114,7 @@ const ExpandedDetails = ({ app, isPending, remarks, setRemarks, handleAction }) 
       {/* Mentor & Addressee */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
         <div className="space-y-2">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Internal Mentor</h4>
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Mentor / H.O.D. / Contact Person</h4>
           <p className="text-sm font-bold text-slate-800">{app.mentorName}</p>
           <p className="text-xs text-slate-500">{app.mentorDesignation} | {app.mentorEmail} | {app.mentorContact}</p>
         </div>
@@ -219,7 +233,7 @@ const OfficerDashboard = () => {
       delete newRemarks[id];
       setRemarks(newRemarks);
       setExpandedId(null);
-      toast.success(`Application ${action.toLowerCase()}ed successfully!`);
+      toast.success(`Application ${({ APPROVE: 'approved', REJECT: 'rejected', COLLECTED: 'marked as collected' })[action] || 'updated'} successfully!`);
       fetchApplications();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error updating status');
@@ -293,6 +307,9 @@ const OfficerDashboard = () => {
               {getGreeting()}, Officer {user?.name?.split(' ')[0]}
             </h1>
             <p className="text-slate-500 mt-1 font-medium">{formatTodayDate()}</p>
+            <span className="text-indigo-600 font-extrabold uppercase tracking-widest text-sm mt-1 block">
+              {user?.department?.name || 'Department'} TPO
+            </span>
           </div>
         </div>
 

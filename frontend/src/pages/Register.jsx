@@ -25,8 +25,14 @@ const Register = () => {
     }
     setLoading(true);
     try {
-      await api.post('/auth/send-otp', { email: formData.email });
-      toast.success('OTP has been sent to your email! (Check inbox)');
+      const res = await api.post('/auth/send-otp', { email: formData.email });
+      if (res.data.devOtp) {
+        // Demo mode: backend returns the OTP so the flow works without a mailbox
+        setFormData(prev => ({ ...prev, otp: res.data.devOtp }));
+        toast.success('Demo mode: OTP ' + res.data.devOtp + ' auto-filled (also sent by email)', { duration: 6000 });
+      } else {
+        toast.success('OTP has been sent to your email! (Check inbox)');
+      }
       setShowOtpField(true);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error sending OTP');
@@ -40,13 +46,16 @@ const Register = () => {
     setLoading(true);
     try {
       const res = await api.post('/auth/register', formData);
-      // Store token and set user directly from register response — no second API call needed
+      // Store token and set user directly from register response
       localStorage.setItem('token', res.data.token);
-      setUser(res.data);
+      // Cleanly set user state without the token
+      const { token, ...userData } = res.data;
+      setUser(userData);
       toast.success('Registration successful!');
       navigate('/'); // root route handles role-based redirect
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Error during registration');
+      const errorMsg = err.response?.data?.errors?.[0]?.msg || err.response?.data?.message || 'Error during registration';
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -112,12 +121,13 @@ const Register = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Password</label>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Password (min. 8 characters)</label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     name="password"
                     required
+                    minLength="8"
                     disabled={showOtpField}
                     placeholder="••••••••"
                     className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all shadow-sm pr-16 disabled:bg-slate-50 disabled:text-slate-400"

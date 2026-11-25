@@ -1,7 +1,9 @@
 const Application = require('../models/Application');
 const ApplicationLog = require('../models/ApplicationLog');
 const RoutingConfig = require('../models/RoutingConfig');
+const User = require('../models/User');
 const { enqueueEmail } = require('../utils/emailQueue');
+const { notifyOfficerNewApplication } = require('../utils/emailService');
 const logger = require('../utils/logger');
 
 const submitApplication = async (req, res) => {
@@ -14,10 +16,24 @@ const submitApplication = async (req, res) => {
       studentMessage
     } = req.body;
 
-    const offerLetter = req.files?.['offerLetter']?.[0] ? `uploads/${req.files['offerLetter'][0].filename}` : null;
-    const statementOfObjective = req.files?.['statementOfObjective']?.[0] ? `uploads/${req.files['statementOfObjective'][0].filename}` : null;
-    const mandatoryDocument = req.files?.['mandatoryDocument']?.[0] ? `uploads/${req.files['mandatoryDocument'][0].filename}` : null;
-    const nocFormat = req.files?.['nocFormat']?.[0] ? `uploads/${req.files['nocFormat'][0].filename}` : null;
+    const offerLetter = req.files?.['offerLetter']?.[0]?.path || null;
+    const statementOfObjective = req.files?.['statementOfObjective']?.[0]?.path || null;
+    const mandatoryDocument = req.files?.['mandatoryDocument']?.[0]?.path || null;
+    const nocFormat = req.files?.['nocFormat']?.[0]?.path || null;
+    const marksheet = req.files?.['marksheet']?.[0]?.path || null;
+
+    const sopText = (req.body.sopText || '').trim();
+    const otherInternshipDescription =
+      req.body.internshipType === 'Other'
+        ? (req.body.otherInternshipDescription || '').trim()
+        : '';
+
+    if (!marksheet) {
+      return res.status(400).json({ message: 'Previous semester marksheet PDF is required.' });
+    }
+    if (!sopText) {
+      return res.status(400).json({ message: 'Statement of Purpose is required.' });
+    }
 
     // Check for duplicate active applications
     const exist = await Application.findOne({
@@ -37,7 +53,8 @@ const submitApplication = async (req, res) => {
       mentorName, mentorDesignation, mentorContact, mentorEmail,
       addresseeName, addresseeDesignation, addresseeContact, addresseeEmail,
       status: 'UNDER_REVIEW_DEPT', // correct status from the start
-      offerLetter, statementOfObjective, mandatoryDocument, nocFormat, studentMessage
+      offerLetter, statementOfObjective, mandatoryDocument, marksheet, nocFormat,
+      sopText, otherInternshipDescription, studentMessage
     });
 
     await ApplicationLog.create({
@@ -51,11 +68,31 @@ const submitApplication = async (req, res) => {
     // Notify officer via routing config (fire-and-forget)
     const routing = await RoutingConfig.findOne({ departmentId });
     if (routing?.primaryApproverEmail) {
+      // Send basic notification via queue
       enqueueEmail({
         to: routing.primaryApproverEmail,
         subject: 'New NOC Application Submitted',
         text: `A new NOC application for ${companyName} has been submitted by ${req.user.name}.`,
       });
+
+      // Send formatted notification email (fire-and-forget)
+      notifyOfficerNewApplication({
+        officerEmail: routing.primaryApproverEmail,
+        studentName: req.user.name,
+        companyName,
+        rollNumber
+      }).catch(err => logger.error(`Failed to send officer notification: ${err.message}`));
+    } else {
+      // Fallback: Find department officer directly
+      const officer = await User.findOne({ role: 'DeptOfficer', departmentId });
+      if (officer) {
+        notifyOfficerNewApplication({
+          officerEmail: officer.email,
+          studentName: req.user.name,
+          companyName,
+          rollNumber
+        }).catch(err => logger.error(`Failed to send officer notification: ${err.message}`));
+      }
     }
 
     logger.info(`New application submitted by ${req.user.name} (Student ID: ${req.user._id}) for ${companyName}`);
